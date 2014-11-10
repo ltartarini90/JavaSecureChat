@@ -1,3 +1,5 @@
+package client;
+
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
@@ -7,10 +9,11 @@ import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStreamReader;
 import java.io.PrintWriter;
-import java.net.Socket;
 
+import javax.net.SocketFactory;
+import javax.net.ssl.SSLSocket;
+import javax.net.ssl.SSLSocketFactory;
 import javax.swing.*;
-import javax.swing.border.Border;
 
 /**
  * A simple Swing-based client for the chat server.  Graphically
@@ -30,13 +33,20 @@ import javax.swing.border.Border;
  */
 public class ChatClient {
 
+    SSLSocket socket;
     BufferedReader in;
     PrintWriter out;
-    JFrame frame = new JFrame("Chatter");
+    String serverAddress;
+    JFrame frame = new JFrame("Client chat");
     JTextField textField = new JTextField("Type here...", 40);
     JTextArea messageArea = new JTextArea(10, 40);
     JTextArea usersArea = new JTextArea(10, 10);
     JButton exitButton = new JButton("Exit");
+
+    public ChatClient() {
+
+        initGUI();
+    }
 
     /**
      * Constructs the client by laying out the GUI and registering a
@@ -46,9 +56,10 @@ public class ChatClient {
      * only becomes editable AFTER the client receives the NAMEACCEPTED
      * message from the server.
      */
-    public ChatClient() {
-
+    public void initGUI() {
         // Layout GUI
+        frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+        frame.setVisible(true);
         textField.setEditable(false);
         messageArea.setEditable(false);
         usersArea.setEditable(false);
@@ -68,6 +79,7 @@ public class ChatClient {
              */
             public void actionPerformed(ActionEvent e) {
                 out.println(textField.getText());
+                out.flush();
                 textField.setText("");
             }
         });
@@ -81,7 +93,9 @@ public class ChatClient {
         exitButton.addActionListener(new ActionListener() {
             public void actionPerformed(ActionEvent e) {
                 //Execute when button is pressed
-                System.exit(0);
+                System.out.println("Exiting...");
+                out.println("EXIT");
+                out.flush();
             }
         });
     }
@@ -113,18 +127,41 @@ public class ChatClient {
      */
     private void run() throws IOException {
 
+        serverAddress = getServerAddress();
+
+        System.setProperty("javax.net.ssl.trustStore","/home/luca/IdeaProjects/JavaSecureChat/src/client/clientTruststore.jks");
+        System.setProperty("javax.net.ssl.trustStorePassword","client");
+
+        SocketFactory factory = SSLSocketFactory.getDefault();
+        socket = (SSLSocket) factory.createSocket(serverAddress,9001);
+
+        System.out.println("Connessione avvenuta correttamente dopo aver verificato se il certificato del server � presente nel truststore\n");
+
         // Make connection and initialize streams
-        String serverAddress = getServerAddress();
-        Socket socket = new Socket(serverAddress, 9001);
+        //socket = new Socket(serverAddress, 9001);
         in = new BufferedReader(new InputStreamReader(
                 socket.getInputStream()));
         out = new PrintWriter(socket.getOutputStream(), true);
+
+        //mi "setto" come client
+        socket.setUseClientMode(true);
+        //eseguo subito l'handshake per evitare che lo faccia solamente alla prima lettura o scrittura
+        socket.startHandshake();
+
+        System.out.println("Meccanismi di cifratura abilitati:");
+        for(String s : socket.getSupportedCipherSuites()) {
+            System.out.println(s);
+        }
+        System.out.println("");
+        //setto la lista dei cifrari supportati come cifrari utilizzabili
+        socket.setEnabledCipherSuites(socket.getSupportedCipherSuites());
 
         // Process all messages from server, according to the protocol.
         while (true) {
             String line = in.readLine();
             if (line.startsWith("SUBMITNAME")) {
                 out.println(getName());
+                out.flush();
             } else if (line.startsWith("NAMEACCEPTED")) {
                 textField.setEditable(true);
             }
@@ -145,6 +182,13 @@ public class ChatClient {
             else if (line.startsWith("MESSAGE")) {
                 messageArea.append(line.substring(8) + "\n");
             }
+            else if (line.equals("EXIT")) {
+                in.close();
+                out.close();
+                socket.close();
+                System.out.println("Exited");
+                System.exit(0);
+            }
         }
     }
 
@@ -153,8 +197,6 @@ public class ChatClient {
      */
     public static void main(String[] args) throws Exception {
         ChatClient client = new ChatClient();
-        client.frame.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
-        client.frame.setVisible(true);
         client.run();
     }
 }
