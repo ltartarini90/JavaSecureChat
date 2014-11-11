@@ -1,10 +1,7 @@
 package server;
 
 import javax.net.ServerSocketFactory;
-import javax.net.ssl.KeyManagerFactory;
-import javax.net.ssl.SSLContext;
-import javax.net.ssl.SSLServerSocket;
-import javax.net.ssl.SSLSocket;
+import javax.net.ssl.*;
 import java.io.*;
 import java.net.ServerSocket;
 import java.net.Socket;
@@ -53,33 +50,36 @@ public class ChatServer {
     public static void main(String[] args) throws Exception {
         System.out.println("The chat server is running.");
 
-        /*Inizializzazione ServerSocketFactory per garantire autenticazione e riservatezza*/
-        char[] password = "server".toCharArray();
-        String keyfile = "/home/luca/IdeaProjects/JavaSecureChat/src/server/serverKeystore.jks";
+        // Initialization ServerSocketFactory to ensure authentication and confidentiality
+        char[] passphrase = "server".toCharArray();
+        String keyStoreFileName = "/home/luca/IdeaProjects/JavaSecureChat/src/server/serverKeystore.jks";
+        String keyStoreTrustFileName = "/home/luca/IdeaProjects/JavaSecureChat/src/server/serverTruststore.jks";
         SSLContext sslContext = SSLContext.getInstance("TLS");
         KeyManagerFactory keyManagerFactory = KeyManagerFactory.getInstance("SUNX509");
         KeyStore keyStore = KeyStore.getInstance("JKS");
-        keyStore.load(new FileInputStream(keyfile), password);
-        keyManagerFactory.init(keyStore, password);
-        sslContext.init(keyManagerFactory.getKeyManagers(), null, null);
+        keyStore.load(new FileInputStream(keyStoreFileName), passphrase);
+        keyManagerFactory.init(keyStore, passphrase);
+        // TrustManagers decide whether to allow connections
+        TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance("SunX509");
+        KeyStore keyStoreTrust = KeyStore.getInstance("JKS");
+        keyStoreTrust.load(new FileInputStream(keyStoreTrustFileName), passphrase);
+        trustManagerFactory.init(keyStoreTrust);
+        sslContext.init(keyManagerFactory.getKeyManagers(), trustManagerFactory.getTrustManagers(), null);
         ServerSocketFactory factory = sslContext.getServerSocketFactory();
 
         SSLServerSocket sslServerSocket = (SSLServerSocket) factory.createServerSocket(PORT);
         System.setProperty("javax.net.ssl.keyStore", "/home/luca/IdeaProjects/JavaSecureChat/src/server/serverKeystore.jks");
         System.setProperty("javax.net.ssl.keyStorePassword", "server");
 
-        /* richiedo mutua identificazione */
+        // Mutual identification
         sslServerSocket.setNeedClientAuth(true);
-        sslServerSocket.setWantClientAuth(true); //anche del client quindi
-        //ServerSocket listener = new ServerSocket(PORT);
+        sslServerSocket.setWantClientAuth(true); // Also by the customer
         try {
             while (true) {
-                //new Handler(listener.accept()).start();
                 new Handler((SSLSocket) sslServerSocket.accept()).start();
                 System.out.println("Connection request received...");
             }
         } finally {
-            //listener.close();
             sslServerSocket.close();
         }
     }
@@ -113,8 +113,7 @@ public class ChatServer {
         public void run() {
             try {
                 // Create character streams for the socket.
-                in = new BufferedReader(new InputStreamReader(
-                        socket.getInputStream()));
+                in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
                 out = new PrintWriter(socket.getOutputStream(), true);
 
                 // Request a name from this client.  Keep requesting until
@@ -122,12 +121,11 @@ public class ChatServer {
                 // checking for the existence of a name and adding the name
                 // must be done while locking the set of names.
                 while (true) {
-                    out.println("SUBMITNAME");
+                    out.println("SUBMIT_NAME");
                     out.flush();
                     name = in.readLine();
-                    if (name == null) {
+                    if (name == null)
                         return;
-                    }
                     synchronized (names) {
                         if (!names.contains(name)) {
                             names.add(name);
@@ -139,15 +137,15 @@ public class ChatServer {
                 // Now that a successful name has been chosen, add the
                 // socket's print writer to the set of all writers so
                 // this client can receive broadcast messages.
-                out.println("NAMEACCEPTED");
+                out.println("NAME_ACCEPTED");
                 out.flush();
                 writers.add(out);
                 for (PrintWriter writer : writers) {
-                    writer.println("NEWUSER " + name);
-                    writer.println("USERLIST_START");
+                    writer.println("NEW_USER " + name);
+                    writer.println("USERLIST_BEGIN");
                     for (String username : names)
                         writer.println(username);
-                    writer.println("USERLIST_STOP");
+                    writer.println("USERLIST_END");
                     writer.flush();
                 }
 
@@ -155,12 +153,10 @@ public class ChatServer {
                 // Ignore other clients that cannot be broadcasted to.
                 while (true) {
                     String input = in.readLine();
-                    if (input.equals("EXIT")) {
+                    if (input.equals("EXIT"))
                         break;
-                    }
-                    else if (input == null) {
+                    else if (input == null)
                         return;
-                    }
                     for (PrintWriter writer : writers) {
                         writer.println("MESSAGE " + name + ": " + input);
                         writer.flush();
@@ -173,14 +169,12 @@ public class ChatServer {
                 out.flush();
                 // This client is going down!  Remove its name and its print
                 // writer from the sets, and close its socket.
-                if (name != null) {
+                if (name != null)
                     names.remove(name);
-                }
-                if (out != null) {
+                if (out != null)
                     writers.remove(out);
-                }
                 for (PrintWriter writer : writers) {
-                    writer.println("REMOVEUSER " + name);
+                    writer.println("REMOVE_USER " + name);
                     writer.println("USERLIST_START");
                     for (String username : names)
                         writer.println(username);
