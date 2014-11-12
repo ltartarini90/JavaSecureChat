@@ -1,33 +1,55 @@
 package client;
 
+/**
+ * Created by Luca Tartarini on 12/11/14.
+ */
+
 import java.awt.*;
 import java.awt.event.*;
-import java.io.BufferedReader;
-import java.io.IOException;
-import java.io.InputStreamReader;
-import java.io.PrintWriter;
+import java.io.*;
+import java.security.*;
+import java.security.cert.CertificateException;
 
+import javax.net.ServerSocketFactory;
 import javax.net.SocketFactory;
-import javax.net.ssl.SSLSocket;
-import javax.net.ssl.SSLSocketFactory;
+import javax.net.ssl.*;
 import javax.swing.*;
 
 /**
- * A simple Swing-based client for the chat server.  Graphically
- * it is a frame with a text field for entering messages and a
- * textarea to see the whole dialog.
- *
- * The client follows the Chat Protocol which is as follows.
- * When the server sends "SUBMITNAME" the client replies with the
- * desired screen name.  The server will keep sending "SUBMITNAME"
- * requests as long as the client submits screen names that are
- * already in use.  When the server sends a line beginning
- * with "NAMEACCEPTED" the client is now allowed to start
- * sending the server arbitrary strings to be broadcast to all
- * chatters connected to the server.  When the server sends a
- * line beginning with "MESSAGE " then all characters following
- * this string should be displayed in its message area.
+ * Client for the chat server
  */
+
+/**
+ * Client keypair generation:
+ *
+ * keytool -genkeypair -alias chiaveClient -validity 365 -keystore /home/luca/IdeaProjects/JavaSecureChat/src/client/clientKeystore.jks -keyalg RSA
+ *
+ * Immettere la password del keystore:                                        client
+ * Immettere nuovamente la password:			                              client
+ * Specificare nome e cognome:                                                Client
+ * Specificare il nome dell'unita aziendale:                                  Unibo
+ * Specificare il nome dell'azienda:                                          Unibo
+ * Specificare la localita:                                                   Bologna
+ * Specificare la provincia                                                   BO
+ * Specificare il codice a due lettere del paese in cui si trova l'unita:     IT
+ * Il dato CN=server, OU=unibo, O=unibo, L=Rimini, ST=RN, C=IT e corretto?    si
+ * Immettere la password della chiave per <chiaveServer>:                     ENTER
+ *
+ * Export the certificate of the public key in a file
+ *
+ * keytool -exportcert -alias chiaveClient -keystore /home/luca/IdeaProjects/JavaSecureChat/src/client/clientKeystore.jks -file /home/luca/IdeaProjects/JavaSecureChat/src/client/client.cer
+ *
+ * Import the client certificate
+ *
+ * keytool -importcert -alias chiaveServer -file /home/luca/IdeaProjects/JavaSecureChat/src/server/server.cer -keystore /home/luca/IdeaProjects/JavaSecureChat/src/client/clientTruststore.jks
+ *
+ * Immettere la password del keystore:              client
+ * Immettere nuovamente la nuova password:          client
+ * Stampa dei dati...
+ * Considerare attendibile questo certificato?      si
+ * Il certificato e stato aggiunto al keystore
+ */
+
 public class ChatClient {
 
     private static final int SERVER_PORT = 9001;
@@ -36,7 +58,6 @@ public class ChatClient {
     BufferedReader in;
     PrintWriter out;
     String serverAddress;
-
     // GUI components
     JFrame frame;
     JTextField textField;
@@ -116,8 +137,8 @@ public class ChatClient {
     private String getServerAddress() {
         return JOptionPane.showInputDialog(
                 frame,
-                "Enter IP Address of the Server:",
-                "Welcome to the Chatter",
+                "Enter IP address of the server:",
+                "Welcome to the chat",
                 JOptionPane.QUESTION_MESSAGE);
     }
 
@@ -125,49 +146,72 @@ public class ChatClient {
     private String getName() {
         return JOptionPane.showInputDialog(
                 frame,
-                "Choose a screen name:",
+                "Choose username:",
                 "Screen name selection",
                 JOptionPane.PLAIN_MESSAGE);
     }
 
     // Connects to the server then enters the processing loop.
-    private void run() throws IOException {
+    private void run() throws IOException, NoSuchAlgorithmException, KeyStoreException, CertificateException, UnrecoverableKeyException, KeyManagementException {
 
         serverAddress = getServerAddress();
-
-        // Client truststore
-        System.setProperty("javax.net.ssl.trustStore",
-                "/home/luca/IdeaProjects/JavaSecureChat/src/client/clientTruststore.jks");
-        // Client truststore password
+        // Initialization ServerSocketFactory to ensure authentication and confidentiality
+        char[] passphrase = "client".toCharArray();
+        // The KeyStore file name
+        String keyStoreFileName = "/home/luca/IdeaProjects/JavaSecureChat/src/client/clientKeystore.jks";
+        // TrustStore file name
+        String keyStoreTrustFileName = "/home/luca/IdeaProjects/JavaSecureChat/src/client/clientTruststore.jks";
+        /*
+         * SSLContext: secure socket protocol implementation which acts as a factory for secure socket factories
+         * protocol: TLS
+         */
+        SSLContext sslContext = SSLContext.getInstance("TLS");
+        /*
+         * Factory for key managers, each key manager manages a specific type of key material for use by secure sockets.
+         * The key material is based on a KeyStore and/or provider specific sources
+         */
+        KeyManagerFactory keyManagerFactory = KeyManagerFactory.getInstance("SUNX509");
+        // KeyStore: storage facility for cryptographic keys and certificates
+        KeyStore keyStore = KeyStore.getInstance("JKS");
+        // Loads this KeyStore from the given input stream
+        keyStore.load(new FileInputStream(keyStoreFileName), passphrase);
+        // Initializes this factory with a source of key material
+        keyManagerFactory.init(keyStore, passphrase);
+        // TrustManagers decide whether to allow connections
+        TrustManagerFactory trustManagerFactory = TrustManagerFactory.getInstance("SunX509");
+        KeyStore keyStoreTrust = KeyStore.getInstance("JKS");
+        keyStoreTrust.load(new FileInputStream(keyStoreTrustFileName), passphrase);
+        trustManagerFactory.init(keyStoreTrust);
+        sslContext.init(keyManagerFactory.getKeyManagers(), trustManagerFactory.getTrustManagers(), null);
+        SocketFactory factory = sslContext.getSocketFactory();
+        // Server KeyStore file
+        System.setProperty("javax.net.ssl.keyStore", "/home/luca/IdeaProjects/JavaSecureChat/src/client/clientKeystore.jks");
+        // Server KeyStore password
+        System.setProperty("javax.net.ssl.keyStorePassword", "client");
+        // Client TrustStore file
+        System.setProperty("javax.net.ssl.trustStore", "/home/luca/IdeaProjects/JavaSecureChat/src/client/clientTruststore.jks");
+        // Client TrustStore password
         System.setProperty("javax.net.ssl.trustStorePassword", "client");
-
-        SocketFactory factory = SSLSocketFactory.getDefault();
+        //SocketFactory factory = SSLSocketFactory.getDefault();
         socket = (SSLSocket) factory.createSocket(serverAddress, SERVER_PORT);
-
         System.out.println("Connection successful after verifying the server's certificate in this truststore");
-
         // Make connection and initialize streams
         in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
         out = new PrintWriter(socket.getOutputStream(), true);
-
         // Set as a client
         socket.setUseClientMode(true);
-
         /**
-         * Calling startHandshake which explicitly begins handshakes, eventually any attempt to read or write application data on this socket causes an implicit handshake
+         * Calling startHandshake which explicitly begins handshakes, eventually any attempt to read or write application
+         * data on this socket causes an implicit handshake
          */
         socket.startHandshake();
-
         System.out.println("Cipher suite: " + socket.getSession().getCipherSuite());
-
-
         System.out.println("Ciphers enabled:");
         for(String s : socket.getSupportedCipherSuites()) {
             System.out.println(s);
         }
         // Set the list of supported ciphers
         socket.setEnabledCipherSuites(socket.getSupportedCipherSuites());
-
         // Process all messages from server, according to the protocol
         while (true) {
             String line = in.readLine();
