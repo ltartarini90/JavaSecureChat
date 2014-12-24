@@ -70,12 +70,7 @@ public class ChatClient {
     }
 
     /**
-     * Constructs the client by laying out the GUI and registering a
-     * listener with the textfield so that pressing Return in the
-     * listener sends the textfield contents to the server.  Note
-     * however that the textfield is initially NOT editable, and
-     * only becomes editable AFTER the client receives the NAMEACCEPTED
-     * message from the server.
+     * Initialize the client GUI
      */
     public void initGUI() {
         // Layout GUI
@@ -133,7 +128,7 @@ public class ChatClient {
         });
     }
 
-    // Prompt for and return the address of the server.
+    // Prompt IP address of the server
     private String getServerAddress() {
         return JOptionPane.showInputDialog(
                 frame,
@@ -142,7 +137,7 @@ public class ChatClient {
                 JOptionPane.QUESTION_MESSAGE);
     }
 
-    // Prompt for and return the desired screen name.
+    // Prompt for the username
     private String getName() {
         return JOptionPane.showInputDialog(
                 frame,
@@ -151,7 +146,7 @@ public class ChatClient {
                 JOptionPane.PLAIN_MESSAGE);
     }
 
-    // Connects to the server then enters the processing loop.
+    // Connects to the server
     private void run() throws IOException, NoSuchAlgorithmException, KeyStoreException, CertificateException, UnrecoverableKeyException, KeyManagementException {
 
         serverAddress = getServerAddress();
@@ -194,7 +189,7 @@ public class ChatClient {
         System.setProperty("javax.net.ssl.trustStorePassword", "client");
         //SocketFactory factory = SSLSocketFactory.getDefault();
         socket = (SSLSocket) factory.createSocket(serverAddress, SERVER_PORT);
-        System.out.println("Connection successful after verifying the server's certificate in this truststore");
+        System.out.println("Connection successful after verifying the server's certificate in the TrustStore");
         // Make connection and initialize streams
         in = new BufferedReader(new InputStreamReader(socket.getInputStream()));
         out = new PrintWriter(socket.getOutputStream(), true);
@@ -212,7 +207,7 @@ public class ChatClient {
         }
         // Set the list of supported ciphers
         socket.setEnabledCipherSuites(socket.getSupportedCipherSuites());
-        // Process all messages from server, according to the protocol
+        // Process all messages from server
         while (true) {
             String line = in.readLine();
             if (line.startsWith("SUBMIT_NAME")) {
@@ -244,7 +239,7 @@ public class ChatClient {
         }
     }
 
-    // Runs the client as an application with a closeable frame.
+    // Runs the client .
     public static void main(String[] args) throws Exception {
         ChatClient client = new ChatClient();
         client.run();
